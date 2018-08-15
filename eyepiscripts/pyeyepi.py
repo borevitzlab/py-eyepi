@@ -13,6 +13,7 @@ import socket
 import toml
 import time
 
+
 __author__ = "Gareth Dunstone"
 __copyright__ = "Copyright 2018, Borevitz Lab"
 __credits__ = ["Gareth Dunstone", "Tim Brown", "Justin Borevitz", "Kevin Murray", "Jack Adamson"]
@@ -21,6 +22,67 @@ __version__ = "0.1"
 __maintainer__ = "Gareth Dunstone"
 __email__ = "gareth.dunstone@anu.edu.au"
 __status__ = "alpha"
+
+
+default_config = """
+[rpicamera]
+enable = true
+interval = "30s"
+"""
+
+if not os.path.isfile("/etc/eyepi/eyepi.conf"):
+    with open("/etc/eyepi/eyepi.conf", 'w') as f:
+        f.write(default_config)
+
+default_logging_config = """
+[loggers]
+keys = root
+
+[handlers]
+keys = logfileHandler,syslogHandler
+
+[formatters]
+keys = simpleformatter,logfileformatter
+
+[logger_root]
+level = DEBUG
+handlers = logfileHandler,syslogHandler
+
+[handler_logfileHandler]
+class = handlers.TimedRotatingFileHandler
+level = DEBUG
+args = ('spc-eyepi.log','midnight')
+formatter = logfileformatter
+
+[handler_syslogHandler]
+class = handlers.SysLogHandler
+args=('/dev/log',)
+level = DEBUG
+formatter = simpleformatter
+
+;[handler_kmsgHandler]
+;class = logging.FileHandler
+;level = INFO
+;args = ('/dev/kmsg','w',)
+;formatter = simpleformatter
+
+;[handler_consoleHandler]
+;class = StreamHandler
+;level = DEBUG
+;formatter = simpleformatter
+;args = (sys.stdout,)
+
+[formatter_logfileformatter]
+format = %(asctime)s    %(levelname)s   [%(name)s.%(funcName)s:%(lineno)d]    %(message)s
+
+[formatter_simpleformatter]
+format = %(name)s - %(levelname)s:   %(message)s
+"""
+
+
+if not os.path.isfile("/etc/eyepi/logging.ini"):
+    with open("/etc/eyepi/logging.ini", 'w') as f:
+        f.write(default_logging_config)
 
 # attempt to setup logging.
 try:

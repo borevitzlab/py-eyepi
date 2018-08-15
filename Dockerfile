@@ -1,15 +1,13 @@
-FROM resin/raspberry-pi-alpine-python:3.6.1-slim
+FROM resin/raspberry-pi-alpine-python
 
 RUN \
     echo "**** install packages ****" && \
     apk add --update \
-    py-numpy \
-    py-pillow \
+    py3-numpy \
+    py3-pillow \
     gphoto2 \
   && pip3 install py-eyepi \
   && rm -rf /var/cache/apk/*
-
-COPY . .
 
 # ports and volumes
 VOLUME /var/lib/eyepi /etc/eyepi
