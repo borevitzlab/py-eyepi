@@ -27,7 +27,6 @@ __status__ = "alpha"
 default_config = """
 [rpicamera]
 enable = true
-interval = "30s"
 """
 
 if not os.path.isfile("/etc/eyepi/eyepi.conf"):
@@ -117,8 +116,16 @@ def detect_picam(conf) -> tuple:
     """
     logger.info("Detecting picamera")
 
-    if not "filenameprefix" in conf:
+    if not "filenameprefix" in conf:    
         conf['filenameprefix'] = "{}-Picam".format(socket.gethostname())
+
+    environ_fnp = os.environ.get("PICAM_FILENAMEPREFIX")
+    if environ_fnp is not None:
+        conf['filenameprefix'] = environ_fnp
+
+    environ_interval = os.environ.get("PICAM_INTERVAL")
+    if environ_fnp is not None:
+        conf['interval'] = environ_interval
 
     if not (os.path.exists("/opt/vc/bin/vcgencmd")):
         logger.error("vcgencmd not found, cannot detect picamera.")
