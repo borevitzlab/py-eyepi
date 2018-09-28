@@ -5,7 +5,7 @@ import os
 import shutil
 import time
 import tempfile
-import numpy
+# import numpy
 import traceback
 import subprocess
 from dateutil import zoneinfo, parser
@@ -176,7 +176,8 @@ class Camera(Thread):
         self.name = identifier
         self._exif = dict()
         self._frame = None
-        self._image = numpy.empty((Camera.default_width, Camera.default_height, 3), numpy.uint8)
+        self._image = Image.new('RGB', (1,1))
+        # self._image = numpy.empty((Camera.default_width, Camera.default_height, 3), numpy.uint8)
         self.config = config.copy()
         self.name = self.config.get("filenameprefix", identifier)
 
@@ -213,7 +214,7 @@ class Camera(Thread):
 
         self.current_capture_time = datetime.datetime.now()
 
-    def capture_image(self, filename: str = None) -> numpy.array:
+    def capture_image(self, filename: str = None):
         """
         Camera capture method.
         override this method when creating a new type of camera.
@@ -228,7 +229,7 @@ class Camera(Thread):
         """
         return self._image
 
-    def capture(self, filename: str = None) -> numpy.array:
+    def capture(self, filename: str = None):
         """
         capture method, only extends functionality of :func:`Camera.capture` so that testing with  can happen
 
@@ -257,7 +258,7 @@ class Camera(Thread):
         return self._exif
 
     @property
-    def image(self) -> numpy.array:
+    def image(self):
         """
         Gets the current image (last image taken and stored) as a numpy.array.
 
@@ -447,7 +448,7 @@ class Camera(Thread):
 
                             # self._image = cv2.resize(self._image, (Camera.default_width, Camera.default_height),
                             #                          interpolation=cv2.INTER_NEAREST)
-                            img = self._image.resize((Camera.default_width, 
+                            img = self._image.resize((Camera.default_width,
                                                               Camera.default_height),
                                 resample = Image.NEAREST)
 
@@ -460,14 +461,14 @@ class Camera(Thread):
                             #             thickness=2,
                             #             lineType=cv2.LINE_AA)
                             d = ImageDraw.Draw(img)
-                            d.text((20, img.size[1] - 20), self.timestamped_imagename, color=(0,0,255))
+                            d.text((20, img.size[1] - 20), self.timestamped_imagename, fill=(0,0,255))
 
                             img.save(os.path.join("/dev/shm", self.identifier + ".jpg"))
 
                             # cv2.imwrite(os.path.join("/dev/shm", self.identifier + ".jpg"), self._image)
                             shutil.copy(os.path.join("/dev/shm", self.identifier + ".jpg"),
                                         os.path.join(self.output_directory, "last_image.jpg"))
-                            
+
                             resize_t = time.time() - st
 
                             telemetry["timing_resize_s"] = float(resize_t)
@@ -922,7 +923,7 @@ class PiCamera(Camera):
         except Exception as e:
             self.logger.error("error setting picamera settings: {}".format(str(e)))
 
-    def capture_image(self, filename: str = None) -> numpy.array:
+    def capture_image(self, filename: str = None):
         """
         Captures image using the Raspberry Pi Camera Module, at either max resolution, or resolution
         specified in the config file.
