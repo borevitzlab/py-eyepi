@@ -165,10 +165,11 @@ class Camera(Thread):
         :param kwargs:
         """
         identifier = config['filenameprefix']
+        self.logger = logging.getLogger(identifier)
+
         super().__init__(name=identifier)
         print("Thread started {}: {}".format(self.__class__, identifier))
 
-        self.logger = logging.getLogger(identifier)
         self.logger.info("init...")
 
         self.stopper = Event()

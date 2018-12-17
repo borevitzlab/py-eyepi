@@ -223,6 +223,18 @@ def detect_gphoto(confs):
     :param type:
     :return: a dict of port:serialnumber values corresponding to the currently connected gphoto2 cameras.
     """
+    # generate overriding configuration entries from environment variables:
+
+    # filter os.environ vars coz we only care about the vars starting with GPHOTO
+    for env_var_name, env_var_value in filter(lambda x: x[0].startswith("GPHOTO"), os.environ.items()):
+        # split out GPHOTO,filenameprefix and key from the env var
+        _, filenameprefix, key = env_var_name.split("_", 2)
+        # create the config dict entry if it doesnt exist
+        if confs.get(filenameprefix, None) is None:
+            confs[filenameprefix] = {"filenameprefix": filenameprefix}
+        # set te
+        confs[filenameprefix][key] = env_var_value
+        
     try:
 
         workers = []

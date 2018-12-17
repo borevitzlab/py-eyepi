@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='py-eyepi',
-    version='0.2.5-3',
+    version='0.2.5-5',
     python_requires='>=3.2',
     packages=['libeyepi', "eyepiscripts"],
     url='https://borevitzlab.github.io/py-eyepi/',
@@ -28,7 +28,7 @@ setup(
         "Pillow",
         "numpy",
         "python-dateutil>=2.6.1",
-        "toml>=0.9.4",
+        "toml>=0.9.1",
         "picamera>=1.13",
         "pyudev>=0.21.0",
         "pytelegraf[http]>=0.3.0"
