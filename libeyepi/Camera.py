@@ -279,6 +279,16 @@ class Camera(Thread):
         return tn.strftime('%Y_%m_%d_%H_%M_%S')
 
     @staticmethod
+    def directory_timestamp(tn: datetime.datetime) -> str:
+        """
+        Creates a properly formatted directory timestamp from a datetime object.
+
+        :param tn: datetime to format to timestream timestamp string
+        :return: formatted timestamp.
+        """
+        return tn.strftime('%Y/%Y_%m/%Y_%m_%d/%Y_%m_%d_%H')
+
+    @staticmethod
     def time2seconds(t: datetime.datetime) -> int:
         """
         Converts a datetime to an integer of seconds since epoch
@@ -394,7 +404,7 @@ class Camera(Thread):
         return successes
 
     @staticmethod
-    def _write_raw_bytes(image_bytesio: BytesIO, fn: str) -> list:
+    def _write_raw_bytes(image_bytesio: BytesIO, fn: str) -> str:
         """
         Writes a BytesIO object to disk.
 
@@ -430,7 +440,6 @@ class Camera(Thread):
             if self.__class__._thread is not None:
                 self.logger.critical("Camera live view thread is not closed, camera lock cannot be acquired.")
                 continue
-            last_captured_b = b''
             if self.time_to_capture:
                 telemetry = dict()
                 try:
@@ -493,7 +502,9 @@ class Camera(Thread):
                         for fn in files:
                             # move files to the upload directory
                             try:
-                                shutil.move(fn, self.output_directory)
+                                out_dir = os.path.join(self.output_directory, Camera.directory_timestamp(self.current_capture_time))
+                                os.makedirs(out_dir, exist_ok=True)
+                                shutil.move(fn, out_dir)
                                 self.logger.info("Captured & stored for upload - {}".format(os.path.basename(fn)))
                             except Exception as e:
                                 self.logger.error("Couldn't move for timestamped: {}".format(str(e)))
