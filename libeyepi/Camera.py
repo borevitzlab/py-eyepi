@@ -671,9 +671,8 @@ class GPCamera(Camera):
                     else:
                         # try and load an image for the last_image.jpg resized doodadery
                         try:
-                            first = filenames[0] if filenames else None
-                            self._image = Image.open(first)
-                            # self._image = cv2.cvtColor(cv2.imread(first, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+                            jpeg = next(iter(filter(lambda e: '.jpeg' in e.lower() or ".jpg" in e.lower(), filenames)), None)
+                            self._image = Image.open(jpeg)
                         except Exception as e:
                             self.logger.error("Failed to set current image: {}".format(str(e)))
 
