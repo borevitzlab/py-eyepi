@@ -13,7 +13,7 @@ from io import BytesIO
 import threading
 from threading import Thread, Event, Lock
 # import cv2
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import re
 
 timezone = zoneinfo.get_zonefile_instance().get("Australia/Canberra")
@@ -456,22 +456,17 @@ class Camera(Thread):
 
                             st = time.time()
 
-                            # self._image = cv2.resize(self._image, (Camera.default_width, Camera.default_height),
-                            #                          interpolation=cv2.INTER_NEAREST)
                             img = self._image.resize((Camera.default_width,
-                                                              Camera.default_height),
+                                                      Camera.default_height),
                                 resample = Image.NEAREST)
 
-                            # cv2.putText(self._image,
-                            #             self.timestamped_imagename,
-                            #             org=(20, self._image.shape[0] - 20),
-                            #             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                            #             fontScale=1,
-                            #             color=(0, 0, 255),
-                            #             thickness=2,
-                            #             lineType=cv2.LINE_AA)
                             d = ImageDraw.Draw(img)
-                            d.text((20, img.size[1] - 20), self.timestamped_imagename, fill=(0,0,255))
+                            fontpath = "/usr/share/fonts/TTF/Inconsolata-Bold.ttf"
+                            if os.path.exists(fontpath):
+                                d.text((20, img.size[1] - 100), self.timestamped_imagename, fill=(0, 0, 255),
+                                       font=ImageFont.truetype(fontpath, 50))
+                            else:
+                                d.text((20, img.size[1] - 40), self.timestamped_imagename, fill=(0,0,255))
 
                             img.save(os.path.join("/dev/shm", self.identifier + ".jpg"))
 
