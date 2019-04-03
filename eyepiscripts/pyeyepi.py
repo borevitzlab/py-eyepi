@@ -119,13 +119,17 @@ def detect_picam(conf) -> tuple:
     if not "filenameprefix" in conf:    
         conf['filenameprefix'] = "{}-Picam".format(socket.gethostname())
 
-    environ_fnp = os.environ.get("PICAM_FILENAMEPREFIX")
+    environ_fnp = os.environ.get("PICAM_FILENAMEPREFIX", None)
     if environ_fnp is not None:
         conf['filenameprefix'] = environ_fnp
 
-    environ_interval = os.environ.get("PICAM_INTERVAL")
-    if environ_fnp is not None:
+    environ_interval = os.environ.get("PICAM_INTERVAL", None)
+    if environ_interval is not None:
         conf['interval'] = environ_interval
+
+    if os.environ.get("FORCE_PICAM", None):
+        camera = Camera.PiCamera(conf)
+        return camera,
 
     if not (os.path.exists("/opt/vc/bin/vcgencmd")):
         logger.error("vcgencmd not found, cannot detect picamera.")
@@ -134,7 +138,7 @@ def detect_picam(conf) -> tuple:
         cmdret = subprocess.check_output("/opt/vc/bin/vcgencmd get_camera", shell=True).decode()
         if "detected=1" in cmdret:
             camera = Camera.PiCamera(conf)
-            return (camera,)
+            return camera,
         else:
             return tuple()
     except subprocess.CalledProcessError as e:

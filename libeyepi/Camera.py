@@ -517,7 +517,8 @@ class Camera(Thread):
                         telemetry["timing_total_s"] = float(total_capture_time)
                         # communicate our success with the updater
                         try:
-                            telegraf_client = telegraf.HttpClient(host="localhost", port=8186)
+                            # use UDP for telegraf, http is overhead and dodgy
+                            telegraf_client = telegraf.TelegrafClient(host="localhost", port=8092)
                             telegraf_client.metric("camera", telemetry, tags={"camera_name": self.name})
                             self.logger.debug("Communicated sesor data to telegraf")
                         except Exception as exc:
