@@ -21,6 +21,8 @@ RUN \
 
 COPY . /py-eyepi-install
 
+COPY logging.ini /etc/eyepi/logging.ini
+
 RUN \
     cd /py-eyepi-install && \
     python3 setup.py install
