@@ -126,7 +126,7 @@ def detect_picam(conf) -> tuple:
     try:
         cmdret = subprocess.check_output("/opt/vc/bin/vcgencmd get_camera", shell=True).decode()
         if "detected=1" in cmdret:
-            camera = Camera.PiCamera(conf)
+            camera = PiCamera.PiCamera(conf)
             return camera,
         else:
             return tuple()
