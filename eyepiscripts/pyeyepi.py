@@ -6,6 +6,8 @@ import subprocess
 import sys
 import pyudev
 from libeyepi import Camera
+from libeyepi import PiCamera
+from libeyepi import GPCamera
 from threading import Lock
 import re
 import traceback
@@ -115,21 +117,8 @@ def detect_picam(conf) -> tuple:
     :rtype: tuple(PiCamera, Uploader)
     """
     logger.info("Detecting picamera")
-
-    if not "filenameprefix" in conf:    
+    if not "filenameprefix" in conf:
         conf['filenameprefix'] = "{}-Picam".format(socket.gethostname())
-
-    environ_fnp = os.environ.get("PICAM_FILENAMEPREFIX", None)
-    if environ_fnp is not None:
-        conf['filenameprefix'] = environ_fnp
-
-    environ_interval = os.environ.get("PICAM_INTERVAL", None)
-    if environ_interval is not None:
-        conf['interval'] = environ_interval
-
-    if os.environ.get("FORCE_PICAM", None):
-        camera = Camera.PiCamera(conf)
-        return camera,
 
     if not (os.path.exists("/opt/vc/bin/vcgencmd")):
         logger.error("vcgencmd not found, cannot detect picamera.")
@@ -228,17 +217,11 @@ def detect_gphoto(confs):
     :return: a dict of port:serialnumber values corresponding to the currently connected gphoto2 cameras.
     """
     # generate overriding configuration entries from environment variables:
+    # ENV GPHOTO_CAM01_GPHOTOSERIALNUMBER "asdfadgasdgf"
+    # ENV GPHOTO_CAM01_INTERVAL "10m"
+    # ENV GPHOTO_CAM01_FILENAMEPREFIX "CAM01"
+    logger.info("Detecting gphoto2")
 
-    # filter os.environ vars coz we only care about the vars starting with GPHOTO
-    for env_var_name, env_var_value in filter(lambda x: x[0].startswith("GPHOTO"), os.environ.items()):
-        # split out GPHOTO,filenameprefix and key from the env var
-        _, filenameprefix, key = env_var_name.split("_", 2)
-        # create the config dict entry if it doesnt exist
-        if confs.get(filenameprefix, None) is None:
-            confs[filenameprefix] = {"filenameprefix": filenameprefix}
-        # set te
-        confs[filenameprefix][key] = env_var_value
-        
     try:
 
         workers = []
@@ -249,7 +232,7 @@ def detect_gphoto(confs):
                 filenameprefix = conf.get("filenameprefix", filenameprefix)
                 if conf['gphotoserialnumber'] not in cams.keys():
                     continue
-                camera = Camera.GPCamera(conf)
+                camera = GPCamera.GPCamera(conf)
                 workers.append(camera)
                 logger.debug("Sucessfully detected {} @ {}".format(camera.serial_number, camera.usb_address))
                 print("Sucessfully detected {} @ {}".format(camera.serial_number, camera.usb_address))
@@ -307,6 +290,38 @@ def detect_gphoto(confs):
 #         logger.error("couldnt detect the usb cameras {}".format(str(e)))
 #     return tuple()
 
+
+def run_from_env():
+    conf = dict()
+    # detect picam
+    environ_fnp = os.environ.get("PICAM_FILENAMEPREFIX", None)
+    if environ_fnp is not None:
+        conf['filenameprefix'] = environ_fnp
+
+        environ_interval = os.environ.get("PICAM_INTERVAL", None)
+        if environ_interval is not None:
+            conf['interval'] = environ_interval
+
+        camera = PiCamera.PiCamera(conf)
+        print("Sucessfully detected picam {}".format(camera.identifier))
+        return start_workers((camera,))
+
+    conf = dict()
+    # detect gphoto2
+    sn = os.environ.get("GPHOTO2_SERIALNUMBER", None)
+    environ_fnp = os.environ.get("GPHOTO2_FILENAMEPREFIX", None)
+    if environ_fnp is not None and sn is not None:
+        conf['filenameprefix'] = environ_fnp
+        conf['gphotoserialnumber'] = sn
+        environ_interval = os.environ.get("GPHOTO2_INTERVAL", None)
+        if environ_interval is not None:
+            conf['interval'] = environ_interval
+
+        camera = GPCamera.GPCamera(conf)
+        print("Sucessfully detected {} @ {}".format(camera.serial_number, camera.usb_address))
+        return start_workers((camera,))
+    return tuple()
+
 def run_from_toml():
     config = toml.load("/etc/eyepi/eyepi.conf")
     workers = []
@@ -363,6 +378,7 @@ def kill_workers(worker_objects: tuple):
     for thread in worker_objects:
         thread.stop()
 
+
 def main():
     logger.info("Program startup...")
     # The main loop for capture
@@ -375,7 +391,11 @@ def main():
         # start the updater. this is the first thing that should happen.
         recent = time.time()
         try:
-            workers = run_from_toml()
+            docker = os.environ.get("DOCKER", None)
+            if docker is not None and docker not in ["False", False, "false", "f", "0", 0]:
+                workers = run_from_env()
+            else:
+                workers = run_from_toml()
         except Exception as e:
             logger.fatal(e)
             traceback.print_exc()
@@ -404,7 +424,11 @@ def main():
 
                         logger.warning("Recreating workers, {}".format(action))
                         kill_workers(workers)
-                        workers = run_from_toml()
+                        docker = os.environ.get("DOCKER", None)
+                        if docker is not None and docker not in ["False", False, "false", "f", "0", 0]:
+                            workers = run_from_env()
+                        else:
+                            workers = run_from_toml()
                         recent = time.time()
             except Exception as e:
                 logger.fatal(e)

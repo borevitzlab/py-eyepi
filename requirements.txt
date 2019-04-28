@@ -1,7 +1,7 @@
-toml==0.9.4
-python-dateutil==2.6.1
-picamera==1.13
-pyudev==0.21.0
-pytelegraf[http]==0.3.0
+toml
+python-dateutil
+picamera
+pyudev
+pytelegraf
 
 # libjpeg-turbo libtiff exiv2 boost python-pillow

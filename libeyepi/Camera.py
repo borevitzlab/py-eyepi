@@ -1,17 +1,15 @@
 import datetime
 import logging.config
-import glob
+
 import os
 import shutil
 import time
 import tempfile
-# import numpy
 import traceback
-import subprocess
 from dateutil import zoneinfo, parser
 from io import BytesIO
 import threading
-from threading import Thread, Event, Lock
+from threading import Thread, Event
 # import cv2
 from PIL import Image, ImageDraw, ImageFont
 import re
@@ -21,13 +19,6 @@ timezone = zoneinfo.get_zonefile_instance().get("Australia/Canberra")
 try:
     logging.config.fileConfig("/etc/eyepi/logging.ini")
 except:
-    pass
-
-try:
-    import picamera
-    import picamera.array
-except Exception as e:
-    logging.error("Couldnt import picamera module, no picamera camera support: {}".format(str(e)))
     pass
 
 try:
@@ -182,7 +173,7 @@ class Camera(Thread):
         self.config = config.copy()
         self.name = self.config.get("filenameprefix", identifier)
 
-        self.interval = parse_duration(self.config.get("interval", "5m"))
+        self.interval = parse_duration(self.config.get("interval", "10m"))
         self.output_directory = "/var/lib/eyepi/{}".format(str(self.identifier))
 
         # self.begin_capture = datetime.time(0, 0)
@@ -375,7 +366,7 @@ class Camera(Thread):
             s = False
             try:
                 if ext == "tiff":
-                    img.save(fn, compression='tiff_deflate')
+                    img.save(fn, compression='tiff_lzw')
                 else:
                     img.save(fn)
                 s = True
@@ -461,10 +452,12 @@ class Camera(Thread):
                                 resample = Image.NEAREST)
 
                             d = ImageDraw.Draw(img)
-                            fontpath = "/usr/share/fonts/TTF/Inconsolata-Bold.ttf"
-                            if os.path.exists(fontpath):
-                                d.text((20, img.size[1] - 100), self.timestamped_imagename, fill=(0, 0, 255),
-                                       font=ImageFont.truetype(fontpath, 50))
+                            fontpaths = ["/usr/share/fonts/TTF/Inconsolata-Bold.ttf", "/usr/share/fonts/truetype/Inconsolata-Bold.ttf"]
+                            for fontpath in fontpaths:
+                                if os.path.exists(fontpath):
+                                    d.text((20, img.size[1] - 100), self.timestamped_imagename, fill=(0, 0, 255),
+                                           font=ImageFont.truetype(fontpath, 50))
+                                    break
                             else:
                                 d.text((20, img.size[1] - 40), self.timestamped_imagename, fill=(0,0,255))
 
@@ -520,7 +513,7 @@ class Camera(Thread):
                             # use UDP for telegraf, http is overhead and dodgy
                             telegraf_client = telegraf.TelegrafClient(host="localhost", port=8092)
                             telegraf_client.metric("camera", telemetry, tags={"camera_name": self.name})
-                            self.logger.debug("Communicated sesor data to telegraf")
+                            self.logger.debug("Communicated telemetry to telegraf")
                         except Exception as exc:
                             self.logger.error("Couldnt communicate with telegraf client. {}".format(str(exc)))
 
@@ -533,434 +526,3 @@ class Camera(Thread):
                     self.logger.critical(traceback.format_exc())
             time.sleep(1)
 
-
-class GPCamera(Camera):
-    """
-    Camera class
-    other cameras inherit from this class.
-    identifier and usb_address are NOT OPTIONAL
-    """
-
-    def __init__(self, config, lock=Lock(), **kwargs):
-        """
-        Providing a usb address and no identifier or an identifier but no usb address will cause
-
-        :param identifier:
-        :param lock:
-        :param usb_address:
-        :param kwargs:
-        """
-
-        self.lock = lock
-        self.usb_address = [None, None]
-        self._serialnumber = config['gphotoserialnumber']
-        self.identifier = config["filenameprefix"]
-
-        self.usb_address = self.usb_address_detect()
-
-        super().__init__(config, **kwargs)
-        print("Thread started {}: {}".format(self.__class__, self.identifier))
-
-        self.logger.info("Camera detected at usb port {}:{}".format(*self.usb_address))
-        try:
-            self.exposure_length = self.config.getint("camera", "exposure")
-        except:
-            pass
-
-    def usb_address_detect(self) -> tuple:
-        detect_ret = subprocess.check_output(["/usr/bin/gphoto2",
-                                              "--auto-detect"],
-                                             universal_newlines=True)
-        detected_usb_ports = re.findall(r'usb:(\d+),(\d+)', detect_ret)
-        for bus, addr in detected_usb_ports:
-            try:
-                # findall returns strings...
-                bus, addr = int(bus), int(addr)
-                # this is the format that gphoto2 expects the port to be in.
-                port = "usb:{},{}".format(bus, addr)
-
-                # gphoto2 command to get the serial number for the DSLR
-                # WARNING: when the port here needs to be correct, because otherwise gphoto2 will return values from
-                # an arbitrary camera
-                sn_detect_ret = subprocess.check_output(['/usr/bin/gphoto2',
-                                                         '--port={}'.format(port),
-                                                         '--get-config=serialnumber'],
-                                                        universal_newlines=True)
-
-                # Match the serial number.
-                # this regex can also be used to parse the values from --get-config as all results are returned like this:
-                # Label: Serial Number
-                # Type: TEXT
-                # Current: 4fffa81fed8f40d286a63fce62598ef0
-                sn_match = re.search(r'Current: (\w+)', sn_detect_ret)
-
-                if not sn_match:
-                    # we didnt match any output from the command
-                    self.logger.error("Couldnt match serial number from gphoto2 output. {}".format(port))
-                    continue
-                sn = sn_match.group(1)
-
-                if sn.lower() == 'none':
-                    # there is a bug in a specific version of gphoto2 that causes it to return 'None' for the camera serial
-                    # number. If we cant get a unique serial number, we are screwed for multicamera
-                    # todo: allow this if there is only one camera.
-                    self.logger.error("serial number matched with value of 'none' {}".format(port))
-                    continue
-
-                # pad the serialnumber to 32
-                if self._serialnumber == sn:
-                    return (bus, addr)
-
-            except:
-                traceback.print_exc()
-                self.logger.error("Exception detecting gphoto2 camera")
-                self.logger.error(traceback.format_exc())
-        else:
-            self.logger.error(
-                "No identifier from detected cameras ({}) matched desired: {}".format(len(detected_usb_ports),
-                                                                                      self.identifier))
-
-    def capture_image(self, filename=None):
-        """
-        Gapture method for DSLRs.
-        Some contention exists around this method, as its definitely not the easiest thing to have operate robustly.
-        :func:`GPCamera._cffi_capture` is how it _should_ be done, however that method is unreliable and causes many
-        crashes when in real world timelapse situations.
-        This method calls gphoto2 directly, which makes us dependent on gphoto2 (not just libgphoto2 and gphoto2-cffi),
-        and there is probably some issue with calling gphoto2 at the same time like 5 times, maybe dont push it.
-
-        :param filename: filename without extension to capture to.
-        :return: list of filenames (of captured images) if filename was specified, otherwise a numpy array of the image.
-        :rtype: numpy.array or list
-        """
-
-        # the %C filename parameter given to gphoto2 will automatically expand the number of image types that the
-        # camera is set to capture to.
-
-        # this one shouldnt really be used.
-        fn = "{}-temp.%C".format(self.name)
-        if filename:
-            # if target file path exists
-            fn = os.path.join(self.output_directory, "{}.%C".format(filename))
-
-        cmd = [
-            "gphoto2",
-            "--port=usb:{bus:03d},{dev:03d}".format(bus=self.usb_address[0], dev=self.usb_address[1]),
-            "--set-config=capturetarget=0",  # capture to sdram
-            "--force-overwrite",  # if the target image exists. If this isnt present gphoto2 will lock up asking
-            "--capture-image-and-download",  # must capture & download in the same call to use sdram target.
-            '--filename={}'.format(fn)
-        ]
-        self.logger.debug("Capture start: {}".format(fn))
-        for tries in range(6):
-            self.logger.debug("CMD: {}".format(" ".join(cmd)))
-            try:
-                output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
-
-                if "error" in output.lower():
-                    raise subprocess.CalledProcessError("non-zero exit status", cmd=cmd, output=output)
-                else:
-                    # log success of capture
-                    self.logger.info("GPCamera capture success: {}".format(fn))
-                    for line in output.splitlines():
-                        self.logger.debug("GPHOTO2: {}".format(line))
-                    # glob up captured images
-                    filenames = glob.glob(fn.replace("%C", "*"))
-                    # if there are no captured images, log the error
-                    if not len(filenames):
-                        self.logger.error("capture resulted in no files.")
-                    else:
-                        # try and load an image for the last_image.jpg resized doodadery
-                        try:
-                            jpeg = next(iter(filter(lambda e: '.jpeg' in e.lower() or ".jpg" in e.lower(), filenames)), None)
-                            self._image = Image.open(jpeg)
-                        except Exception as e:
-                            self.logger.error("Failed to set current image: {}".format(str(e)))
-
-                        if filename:
-                            # return the filenames of the spooled images if files were requestsed.
-                            return filenames
-                        else:
-                            # otherwise remove the temporary files that we created in order to fill self._image
-                            for fp in filenames:
-                                os.remove(fp)
-                            # and return self._image
-                            return self._image
-
-            except subprocess.CalledProcessError as e:
-                self.logger.error("failed {} times".format(tries))
-                for line in e.output.splitlines():
-                    if not line.strip() == "" and "***" not in line:
-                        self.logger.error(line.strip())
-        else:
-            self.logger.critical("Really bad stuff happened. too many tries capturing.")
-            if filename:
-                return []
-        return None
-
-    @property
-    def serial_number(self) -> str:
-        """
-        returns the current serialnumber for the camera.
-        """
-        return self._serialnumber
-
-    def focus(self):
-        """
-        this is meant to trigger the autofocus. currently not in use because it causes some distortion in the images.
-        """
-        pass
-
-
-class USBCamera(Camera):
-    """
-    USB Camera Class
-    """
-
-    @classmethod
-    def stream_thread(cls):
-        """
-        usb camera stream thread.
-        TODO: Needs to be aware of multiple cameras.
-        """
-        print("ThreadStartup ...")
-        cam = cv2.VideoCapture()
-
-        # camera setup
-        # let camera warm up
-        time.sleep(2)
-        cam.set(3, 30000)
-        cam.set(4, 30000)
-
-        print("Started up!")
-        # for foo in camera.capture_continuous(stream, 'jpeg',
-        #                                      use_video_port=True):
-        while True:
-            ret, frame = cam.read()
-            frame = cv2.imencode(".jpg", frame)
-            cls._frame = frame[1].tostring()
-            # store frame
-
-            # if there hasn't been any clients asking for frames in
-            # the last 10 seconds stop the thread
-            if time.time() - cls._last_access > 10:
-                print("ThreadShutdown")
-                break
-        cls._thread = None
-
-    def __init__(self, identifier: str, sys_number: int, **kwargs):
-        """
-        USB camera init. must have a sys_number (the 0 from /dev/video0) to capture from
-
-        :param identifier: identifier for the webcamera
-        :param sys_number: system device number of device to use
-        :param kwargs:
-        """
-        self.logger = logging.getLogger(identifier)
-
-        try:
-            import cv2
-        except ImportError as e:
-            self.logger.fatal(e)
-            self.logger("no webcam support through cv2")
-        # only webcams have a v4l sys_number.
-        self.sys_number = int(sys_number)
-        self.video_capture = None
-        try:
-            self.video_capture = cv2.VideoCapture()
-        except Exception as e:
-            self.logger.fatal("couldnt open video capture device on {}".format(self.sys_number))
-
-        self._assert_capture_device()
-        try:
-            if not self.video_capture.open(self.sys_number):
-                self.logger.fatal("Couldnt open a video capture device on {}".format(self.sys_number))
-        except Exception as e:
-            self.logger.fatal("Couldnt open a video capture device")
-        # 3 -> width 4->height 5->fps just max them out to get the highest resolution.
-        self.video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 100000)
-        self.video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 100000)
-        self.logger.info("Capturing at {w}x{h}".format(w=self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH),
-                                                       h=self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-
-        super(USBCamera, self).__init__(identifier, **kwargs)
-
-    def stop(self):
-        """
-        releases the video device and stops the camera thread
-        """
-        try:
-            self.video_capture.release()
-        except Exception as e:
-            self.logger.error("Couldnt release cv2 device {}".format(str(e)))
-        self.stopper.set()
-
-    def _assert_capture_device(self):
-        """
-        ensures the capture device is open and valid.
-
-        :param self:
-        """
-        try:
-            if not self.video_capture:
-                self.video_capture = cv2.VideoCapture()
-
-            if not self.video_capture.isOpened():
-                if not self.video_capture.open(self.sys_number):
-                    raise IOError("VideoCapture().open({}) failed.".format(self.sys_number))
-        except Exception as e:
-            self.logger.error("Capture device could not be opened {}".format(str(e)))
-
-    def capture_image(self, filename=None):
-        """
-        captures an image from the usb webcam.
-        Writes some limited exif data to the image if it can.
-
-        :param filename: filename to output without excension
-        :return: list of image filenames if filename was specified, otherwise a numpy array.
-        :rtype: numpy.array or list
-        """
-
-        st = time.time()
-        for _ in range(50):
-            try:
-                ret, im = self.video_capture.read()
-                if ret:
-
-                    self._image = Image.fromarray(im)
-                    break
-                time.sleep(0.1)
-            except Exception as e:
-                self.logger.error("Error webcam capture did not read {}".format(str(e)))
-        else:
-            return None
-
-        if filename:
-            try:
-                filenames = self.encode_write_image(self._image, filename)
-                self.logger.debug("Took {0:.2f}s to capture".format(time.time() - st))
-                return filenames
-            except Exception as e:
-                self.logger.error("Could not write image {}".format(str(e)))
-        else:
-            self.logger.debug("Took {0:.2f}s to capture".format(time.time() - st))
-            return self._image
-        return None
-
-
-class PiCamera(Camera):
-    """
-    Picamera extension to the Camera abstract class.
-    """
-
-    @classmethod
-    def stream_thread(cls):
-        """
-        Streaming thread member.
-
-        uses :func:`picamera.PiCamera.capture_continuous` to stream data from the rpi camera video port.
-
-        :func:`time.sleep` added to rate limit a little bit.
-
-        """
-        import picamera
-        print("start thread")
-        try:
-            with picamera.PiCamera() as camera:
-                # camera setup
-                camera.resolution = (640, 480)
-                # camera.hflip = True
-                # camera.vflip = True
-
-                # let camera warm up
-                camera.start_preview()
-                time.sleep(2)
-
-                stream = BytesIO()
-                for foo in camera.capture_continuous(stream, 'jpeg',
-                                                     use_video_port=True):
-                    # store frame
-                    stream.seek(0)
-                    cls._frame = stream.read()
-
-                    # reset stream for next frame
-                    stream.seek(0)
-                    stream.truncate()
-
-                    # if there hasn't been any clients asking for frames in
-                    # the last 10 seconds stop the thread
-                    time.sleep(0.01)
-                    if time.time() - cls._last_access > 1:
-                        break
-        except Exception as e:
-            print("Couldnt acquire camera")
-        print("Closing Thread")
-        cls._thread = None
-
-    def set_camera_settings(self, camera):
-        """
-        Sets the camera resolution to the max resolution
-
-        if the config provides camera/height or camera/width attempts to set the resolution to that.
-        if the config provides camera/isoattempts to set the iso to that.
-        if the config provides camera/shutter_speed to set the shutterspeed to that.
-
-        :param picamera.PiCamera camera: picamera camera instance to modify
-        """
-        try:
-            camera.resolution = camera.MAX_RESOLUTION
-            if type(self.config) is dict:
-                if hasattr(self, "width") and hasattr(self, "height"):
-                    camera.resolution = (int(self.width),
-                                         int(self.height))
-                if "width" in self.config and "height" in self.config:
-                    camera.resolution = (int(self.config['width']),
-                                         int(self.config['height']))
-
-                camera.shutter_speed = getattr(self, "shutter_speed", camera.shutter_speed)
-                camera.iso = getattr(self, "iso", camera.iso)
-            else:
-                if self.config.has_option("camera", "width") and self.config.has_option("camera", "height"):
-                    camera.resolution = (self.config.getint("camera", "width"),
-                                         self.config.getint("camera", "height"))
-                if self.config.has_option("camera", "shutter_speed"):
-                    camera.shutter_speed = self.config.getfloat("camera", "shutter_speed")
-                if self.config.has_option("camera", "iso"):
-                    camera.iso = self.config.getint("camera", "iso")
-        except Exception as e:
-            self.logger.error("error setting picamera settings: {}".format(str(e)))
-
-    def capture_image(self, filename: str = None):
-        """
-        Captures image using the Raspberry Pi Camera Module, at either max resolution, or resolution
-        specified in the config file.
-
-        Writes images disk using :func:`encode_write_image`, so it should write out to all supported image formats
-        automatically.
-
-        :param filename: image filename without extension
-        :return: :func:`numpy.array` if filename not specified, otherwise list of files.
-        :rtype: numpy.array
-        """
-        st = time.time()
-        try:
-            with picamera.PiCamera() as camera:
-                with picamera.array.PiRGBArray(camera) as output:
-                    time.sleep(2)  # Camera warm-up time
-                    self.set_camera_settings(camera)
-                    time.sleep(0.2)
-                    # self._image = numpy.empty((camera.resolution[1], camera.resolution[0], 3), dtype=numpy.uint8)
-                    camera.capture(output, 'rgb')
-                    # self._image = output.array
-                    self._image = Image.fromarray(output.array)
-                    # self._image = cv2.cvtColor(self._image, cv2.COLOR_BGR2RGB)
-            if filename:
-                filenames = self.encode_write_image(self._image, filename)
-                self.logger.debug("Took {0:.2f}s to capture".format(time.time() - st))
-                return filenames
-            else:
-                self.logger.debug("Took {0:.2f}s to capture".format(time.time() - st))
-        except Exception as e:
-            self.logger.critical("EPIC FAIL, trying other method. {}".format(str(e)))
-            return None
-        return None

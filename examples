@@ -1,0 +1,12 @@
+# start rpi camera
+docker run -d --name eyepi --privileged \
+    -e PICAM_FILENAMEPREFIX=mytest -e PICAM_INTERVAL=10m \
+    -e TZ=Australia/Canberra -v $PWD/data:/var/lib/eyepi:rw \
+    appf/py-eyepi:latest
+
+# start a gphoto2 camera
+docker run -d --name eyepi --privileged -v /dev/bus/usb:/dev/bus/usb \
+    -e GPHOTO2_FILENAMEPREFIX=mytest -e GPHOTO2_INTERVAL=10m \
+    -e GPHOTO2_SERIALNUMBER=b4e63ebd8704d48 \
+    -e TZ=Australia/Canberra -v $PWD/data:/var/lib/eyepi:rw \
+    appf/py-eyepi:latest
