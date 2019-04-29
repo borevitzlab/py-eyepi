@@ -381,6 +381,11 @@ def kill_workers(worker_objects: tuple):
 
 def main():
     logger.info("Program startup...")
+    try:
+        import pkg_resources
+        logger.info("py-eyepi: {}".format(pkg_resources.get_distribution("py-eyepi").version))
+    except:
+        logger.info("Couldn't print version")
     # The main loop for capture
 
     # these should be all detected at some point.
