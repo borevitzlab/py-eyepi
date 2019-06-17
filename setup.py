@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='py-eyepi',
-    version='0.2.8-2',
+    version='0.2.8-3',
     python_requires='>=3.2',
     packages=['libeyepi', "eyepiscripts"],
     url='https://borevitzlab.github.io/py-eyepi/',
