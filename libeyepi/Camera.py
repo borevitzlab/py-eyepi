@@ -365,8 +365,10 @@ class Camera(Thread):
             fn = "{}.{}".format(fnp, ext)
             s = False
             try:
-                if ext == "tiff":
-                    img.save(fn, compression='tiff_lzw')
+                if ext == "tiff" or ext == "tif":
+                    # format="TIFF" and compression='tiff_lzw' are required
+                    # without these 2 params it will save a tiff without
+                    img.save(fn, format="TIFF", compression='tiff_lzw')
                 else:
                     img.save(fn)
                 s = True
